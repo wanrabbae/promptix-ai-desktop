@@ -1,0 +1,40 @@
+{
+  "name": "promptix-ai-desktop",
+  "version": "1.0.0",
+  "description": "A DeepSeek API-powered desktop widget for Ubuntu",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --linux",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Alwan R",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^36.3.2",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.promptix.deepseekwidget",
+    "productName": "Promptix AI",
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "maintainer": "Alwan wancode.msg@gmail.com"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/{.cache,.bin}"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/"
+      }
+    ]
+  }
+}

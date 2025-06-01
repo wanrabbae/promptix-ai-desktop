@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promptix AI</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    body {
+      background: rgba(12, 33, 67, 0.9);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      overflow: hidden;
+    }
+
+    .drag-region {
+      -webkit-app-region: drag;
+      cursor: move;
+    }
+
+    .no-drag {
+      -webkit-app-region: no-drag;
+    }
+
+    #sidebar {
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    #sidebar.sidebar-visible {
+      transform: translateX(0);
+    }
+
+    .typing-indicator::after {
+      content: '...';
+      animation: typing 1.5s infinite;
+    }
+
+    @keyframes typing {
+      0% {
+        content: '.';
+      }
+
+      33% {
+        content: '..';
+      }
+
+      66% {
+        content: '...';
+      }
+    }
+
+    select option:disabled {
+      color: #6b7280;
+      /* gray-500 */
+      font-style: italic;
+    }
+  </style>
+</head>
+
+<body class="text-white font-sans">
+  <div class="flex h-screen">
+    <!-- Sidebar -->
+    <div id="sidebar" class="w-64 bg-slate-800/80 border-r border-slate-700/50 flex flex-col absolute z-10 h-full">
+      <div class="p-4 border-b border-slate-700/50 flex justify-between items-center">
+        <h2 class="text-lg font-semibold">Chat History</h2>
+        <button id="close-sidebar" class="no-drag text-gray-400 hover:text-white">
+          ✕
+        </button>
+      </div>
+      <div id="history-list" class="flex-1 overflow-y-auto p-2 space-y-2">
+        <!-- History items will appear here -->
+      </div>
+      <div class="p-2 border-t border-slate-700/50">
+        <button id="new-chat-btn" class="w-full bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition">
+          New Chat
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col">
+      <!-- Header -->
+      <header class="flex justify-between items-center p-4">
+        <div class="flex items-center gap-4">
+          <button id="menu-btn" class="no-drag text-gray-300 hover:text-white">
+            ☰
+          </button>
+          <div class="flex items-center gap-2">
+            <h1 class="drag-region text-xl font-bold">
+              <img src="./assets/removed-bg-icon.png" alt="icon" class="inline-block w-6 h-6 mr-2">
+              Promptix
+            </h1>
+            <select id="model-select" class="no-drag bg-slate-700/70 text-sm rounded px-2 py-1 focus:outline-none">
+              <option value="deepseek-chat" selected>DeepSeek Chat</option>
+              <option value="GPT-4.1" disabled>GPT-4.1 (Coming Soon)</option>
+              <option value="gemini-2.5-flash-preview-05-20" disabled>Gemini 2.5 (Coming Soon)</option>
+            </select>
+          </div>
+        </div>
+        <button id="close-btn" class="no-drag text-gray-300 hover:text-white">
+          ✕
+        </button>
+      </header>
+
+      <!-- Chat Area -->
+      <div id="response" class="flex-1 bg-slate-800/50 p-4 overflow-y-auto">
+        <div class="flex justify-center items-center h-full text-gray-400 flex-col">
+          <img src="./assets/removed-bg-icon.png" alt="PROMPTIX AI" class="w-16 h-16 mb-4">
+          <p>Start a new conversation</p>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="p-4">
+        <div class="flex gap-2">
+          <input id="user-input" type="text" placeholder="Ask Anything..."
+            class="flex-1 bg-slate-700/70 rounded px-3 py-2 focus:outline-none" />
+          <button id="send-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition">
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    // DOM Elements
+    const sidebar = document.getElementById('sidebar');
+    const menuBtn = document.getElementById('menu-btn');
+    const closeSidebarBtn = document.getElementById('close-sidebar');
+    const closeBtn = document.getElementById('close-btn');
+    const sendBtn = document.getElementById('send-btn');
+    const userInput = document.getElementById('user-input');
+    const responseDiv = document.getElementById('response');
+    const historyList = document.getElementById('history-list');
+    const newChatBtn = document.getElementById('new-chat-btn');
+    const modelSelect = document.getElementById('model-select');
+
+    // State
+    let currentChat = {
+      id: Date.now(),
+      title: 'New Chat',
+      messages: [],
+      model: 'deepseek-chat', // Only DeepSeek for now
+      timestamp: new Date()
+    };
+    let chats = JSON.parse(localStorage.getItem('deepseek-chats')) || [];
+
+    // Initialize
+    renderHistory();
+    modelSelect.value = 'deepseek-chat'; // Force DeepSeek selection
+
+    // Event Listeners
+    menuBtn.addEventListener('click', () => {
+      sidebar.classList.add('sidebar-visible');
+    });
+
+    closeSidebarBtn.addEventListener('click', () => {
+      sidebar.classList.remove('sidebar-visible');
+    });
+
+    closeBtn.addEventListener('click', () => {
+      ipcRenderer.send('window-hide');
+    });
+
+    newChatBtn.addEventListener('click', () => {
+      startNewChat();
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    // Model selection handler (for future use)
+    modelSelect.addEventListener('change', (e) => {
+      if (e.target.value !== 'deepseek-chat') {
+        e.target.value = 'deepseek-chat'; // Force back to DeepSeek
+        // Optional: Show a notification that only DeepSeek is available
+        const notification = new Notification('Model Selection', {
+          body: 'Only DeepSeek Chat is currently available'
+        });
+      }
+    });
+
+    // Functions
+    function startNewChat() {
+      // Save current chat if it has messages
+      if (currentChat.messages.length > 0) {
+        if (!chats.some(chat => chat.id === currentChat.id)) {
+          chats.unshift(currentChat);
+          saveChats();
+        }
+      }
+
+      // Create new chat
+      currentChat = {
+        id: Date.now(),
+        title: 'New Chat',
+        messages: [],
+        model: 'deepseek-chat',
+        timestamp: new Date()
+      };
+
+      // Update UI
+      renderChat();
+      renderHistory();
+      sidebar.classList.remove('sidebar-visible');
+    }
+
+    async function sendMessage() {
+      const message = userInput.value.trim();
+      if (!message) return;
+
+      // Add user message to chat
+      currentChat.messages.push({
+        role: 'user',
+        content: message,
+        timestamp: new Date()
+      });
+
+      // Add typing indicator
+      const typingMessage = {
+        role: 'assistant',
+        content: '<div class="typing-indicator">Thinking</div>',
+        timestamp: new Date(),
+        isTyping: true
+      };
+      currentChat.messages.push(typingMessage);
+
+      // Update UI
+      renderChat();
+      userInput.value = '';
+      userInput.focus();
+
+      // Get response from DeepSeek API
+      try {
+        const response = await callDeepSeekAPI(message);
+
+        // Remove typing indicator
+        currentChat.messages = currentChat.messages.filter(m => !m.isTyping);
+
+        // Add actual response
+        currentChat.messages.push({
+          role: 'assistant',
+          content: response,
+          timestamp: new Date()
+        });
+
+        // Update chat title if first message
+        if (currentChat.messages.length === 2) {
+          currentChat.title = message.slice(0, 30) + (message.length > 30 ? '...' : '');
+        }
+
+        currentChat.timestamp = new Date();
+
+        // Save to history
+        if (!chats.some(chat => chat.id === currentChat.id)) {
+          chats.unshift(currentChat);
+        }
+        saveChats();
+
+      } catch (error) {
+        // Remove typing indicator on error
+        currentChat.messages = currentChat.messages.filter(m => !m.isTyping);
+        currentChat.messages.push({
+          role: 'assistant',
+          content: `Error: ${error.message}`,
+          timestamp: new Date()
+        });
+      }
+
+      renderChat();
+      renderHistory();
+    }
+
+    async function callDeepSeekAPI(query) {
+      const API_KEY = 'YOUR_DEEPSEEK_API_KEY'; // Replace with your actual API key
+      const API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "user",
+              content: query
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'API request failed');
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content;
+    }
+
+    function renderChat() {
+      responseDiv.innerHTML = currentChat.messages.map(msg => `
+        <div class="mb-4 p-3 rounded-lg ${msg.role === 'user' ? 'bg-slate-700/50' : 'bg-slate-800/70'}">
+          <div class="font-semibold mb-1">${msg.role === 'user' ? 'You' : 'DeepSeek AI'}</div>
+          <div>${msg.content}</div>
+        </div>
+      `).join('');
+
+      // Scroll to bottom
+      responseDiv.scrollTop = responseDiv.scrollHeight;
+    }
+
+    function renderHistory() {
+      historyList.innerHTML = chats.map(chat => `
+        <div 
+          class="p-3 rounded-lg cursor-pointer hover:bg-slate-700/50 transition"
+          onclick="loadChat('${chat.id}')"
+        >
+          <div class="font-medium truncate">${chat.title}</div>
+          <div class="text-xs text-gray-400 mt-1">
+            ${new Date(chat.timestamp).toLocaleString()}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function saveChats() {
+      localStorage.setItem('deepseek-chats', JSON.stringify(chats));
+    }
+
+    window.loadChat = (id) => {
+      const chat = chats.find(c => c.id === id);
+      if (chat) {
+        currentChat = JSON.parse(JSON.stringify(chat));
+        modelSelect.value = currentChat.model;
+        renderChat();
+        sidebar.classList.remove('sidebar-visible');
+      }
+    };
+  </script>
+</body>
+
+</html>
