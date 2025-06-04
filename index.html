@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     body {
-      background: rgba(12, 33, 67, 0.9);
+      background: rgba(17, 27, 44, 0.9);
       border-radius: 12px;
       backdrop-filter: blur(10px);
       overflow: hidden;
@@ -279,8 +279,8 @@
     }
 
     async function callDeepSeekAPI(query) {
-      const API_KEY = 'YOUR_DEEPSEEK_API_KEY'; // Replace with your actual API key
-      const API_URL = 'https://api.deepseek.com/v1/chat/completions';
+      const API_KEY = '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';
+      const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
       const response = await fetch(API_URL, {
         method: 'POST',
@@ -289,7 +289,7 @@
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek/deepseek-chat:free",
           messages: [
             {
               role: "user",
@@ -313,7 +313,7 @@
     function renderChat() {
       responseDiv.innerHTML = currentChat.messages.map(msg => `
         <div class="mb-4 p-3 rounded-lg ${msg.role === 'user' ? 'bg-slate-700/50' : 'bg-slate-800/70'}">
-          <div class="font-semibold mb-1">${msg.role === 'user' ? 'You' : 'DeepSeek AI'}</div>
+          <div class="font-semibold mb-1">${msg.role === 'user' ? 'You' : 'Promptix AI'}</div>
           <div>${msg.content}</div>
         </div>
       `).join('');
@@ -341,14 +341,38 @@
     }
 
     window.loadChat = (id) => {
-      const chat = chats.find(c => c.id === id);
+      // Convert id to number if it's a string (from HTML attribute)
+      const chatId = typeof id === 'string' ? parseInt(id) : id;
+      const chat = chats.find(c => c.id === chatId);
+
       if (chat) {
         currentChat = JSON.parse(JSON.stringify(chat));
         modelSelect.value = currentChat.model;
         renderChat();
         sidebar.classList.remove('sidebar-visible');
+
+        // Scroll to bottom of chat
+        setTimeout(() => {
+          responseDiv.scrollTop = responseDiv.scrollHeight;
+        }, 50);
+      } else {
+        console.error('Chat not found:', id);
       }
     };
+
+    // Update the renderHistory function to pass numbers correctly
+    function renderHistory() {
+      historyList.innerHTML = chats.map(chat => `
+        <div 
+          class="p-3 rounded-lg cursor-pointer hover:bg-slate-700/50 transition"
+          onclick="loadChat(${chat.id})">
+          <div class="font-medium truncate">${chat.title}</div>
+          <div class="text-xs text-gray-400 mt-1">
+            ${new Date(chat.timestamp).toLocaleString()}
+          </div>
+        </div>
+      `).join('');
+    }
   </script>
 </body>
 
